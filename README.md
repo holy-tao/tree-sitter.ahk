@@ -36,6 +36,16 @@ lang := AutoHotkeyLang()
 parser := TSParser(lang)
 ```
 
+### Using the bindings
+
+The parsed code is represented by a [`TSTree`](./TSTree.ahk) object. This object doesn't do much on its own, rather, you pass it into other objects to query it or walk the syntax tree.
+
+#### Walking the tree
+
+You can walk the tree using a [`TSTreeCursor`](./TSTreeCursor.ahk) object. 
+
+[`ASTViewer`](./ASTViewer.ahk) demonstrates a full tree-walk as well as ways to extract the underlying code from the tree's nodes.
+
 ### Aquiring Binaries
 You need two `.dll` files to work with tree-sitter: the tree-sitter runtime, and the compiled grammar of your choice. The tree-sitter runtime is available pre-built through a couple of package managers, and you could probably extract it from there. But if you don't want to deal with all that, it's pretty easy to compile yourself.
 
