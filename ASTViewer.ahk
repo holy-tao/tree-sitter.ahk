@@ -100,8 +100,13 @@ UpdateTree(window, cursor) {
             node := cursor.Current
 
             ; Ignore anonymous nodes
-            if(node.IsNamed) {
-                id := window["Tree"].Add(node.Type, nodeIdStack[-1])
+            if(node.IsNamed || node.IsMissing) {
+                treeName := node.Type
+                if(node.HasError) {
+                    treeName := "(!!!) " treeName
+                }
+
+                id := window["Tree"].Add(treeName, nodeIdStack[-1])
                 nodeIdStack.Push(id)
                 nodes[id] := node
             }
@@ -112,7 +117,7 @@ UpdateTree(window, cursor) {
             visitedChildren := true  ; leaf node, treat as already visited
         }
 
-        if (cursor.Current.IsNamed)
+        if (cursor.Current.IsNamed || cursor.Current.IsMissing)
             nodeIdStack.Pop()
 
         if (cursor.GotoNextSibling()) {
