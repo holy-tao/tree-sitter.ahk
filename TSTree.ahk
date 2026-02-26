@@ -1,6 +1,8 @@
 #Requires AutoHotkey v2.0 64-bit
 
 #Include TSNode.ahk
+#Include TSQuery.ahk
+#Include TSQueryCursor.ahk
 
 /**
  * A tree-sitter parse tree
@@ -46,6 +48,23 @@ class TSTree {
         finally {
             DllCall("ucrtbase\_close", "Int", fd)
         }
+    }
+
+    /**
+     * A convenience method that queries the tree at it's root using a particular query
+     * string and returns a `TSQueryCursor` that you can use to iterate the matches
+     * 
+     * @param {TSQuery | String} queryOrExpression the query to run
+     * @returns {TSQueryCursor} a cursor that you can use to iterate the query
+     */
+    Query(queryOrExpression) {
+        if(queryOrExpression is String) {
+            queryOrExpression := TSQuery(this.language, queryOrExpression)
+        }
+
+        cursor := TSQueryCursor()
+        cursor.Exec(queryOrExpression, this.Root)
+        return cursor
     }
 
     __Delete() {
