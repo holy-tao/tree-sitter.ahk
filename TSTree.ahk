@@ -20,10 +20,21 @@ class TSTree {
         }
     }
 
-    __New(ptr, lang) {
+    __New(ptr, lang, source?, encoding?) {
         this.ptr := ptr
         this.language := lang
+        if IsSet(source)
+            this._source := source
+        this._encoding := encoding ?? 0
     }
+
+    /**
+     * Map TSInputEncoding enum value to a StrGet-compatible encoding string.
+     * @type {String}
+     */
+    _StrGetEncoding => (this._encoding == 1) ? "UTF-16"
+        : (this._encoding == 2) ? "CP1201"
+        : "UTF-8"
 
     /**
      * Write a {@link https://graphviz.org/doc/info/lang.html DOT graph} describing the syntax 

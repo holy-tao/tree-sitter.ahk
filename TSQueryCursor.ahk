@@ -55,6 +55,7 @@ class TSQueryCursor {
      */
     __New() {
         this.ptr := DllCall("tree-sitter\ts_query_cursor_new", "cdecl ptr")
+        this._predicateHandlers := Map()
     }
 
     /**
@@ -79,6 +80,17 @@ class TSQueryCursor {
             "ptr", query,
             "ptr", node,
             "cdecl")
+    }
+
+    /**
+     * Register a custom predicate handler. The handler will be called for
+     * predicates with the given name, overriding any built-in handler.
+     *
+     * @param {String} name the predicate name (e.g. `"eq?"`, `"my-custom?"`)
+     * @param {Func} handler a function `(cursor, match, args) => Boolean`
+     */
+    RegisterPredicate(name, handler) {
+        this._predicateHandlers[name] := handler
     }
 
     /**
@@ -198,6 +210,10 @@ class TSQueryCursor {
     /**
      * Advance to the next match of the currently running query.
      *
+     * Matches whose predicates fail are automatically skipped. If the query
+     * has predicates but no source buffer is available on the tree, an error
+     * is thrown.
+     *
      * If there is a match, a `Match` object is returned containing the
      * match's pattern index and an array of captures. If there are no more
      * matches, `0` is returned.
@@ -205,16 +221,23 @@ class TSQueryCursor {
      * @returns {TSQueryCursor.Match | 0} the next match, or `0` if exhausted
      */
     NextMatch() {
-        matchBuf := Buffer(16, 0)
-        result := DllCall("tree-sitter\ts_query_cursor_next_match",
-            "ptr", this,
-            "ptr", matchBuf,
-            "cdecl uchar")
+        loop {
+            matchBuf := Buffer(16, 0)
+            result := DllCall("tree-sitter\ts_query_cursor_next_match",
+                "ptr", this,
+                "ptr", matchBuf,
+                "cdecl uchar")
 
-        if (!result)
-            return 0
+            if (!result)
+                return 0
 
-        return this._ReadMatch(matchBuf)
+            match := this._ReadMatch(matchBuf)
+
+            if !this._SatisfiesPredicates(match)
+                continue
+
+            return match
+        }
     }
 
     /**
@@ -229,23 +252,32 @@ class TSQueryCursor {
      * capture belongs to) and a `captureIndex` (the index within
      * `match.captures` of the specific capture being yielded).
      *
-     * When using this method with queries that have predicates, call
-     * `RemoveMatch(result.match.id)` to drop matches whose predicates fail.
+     * Matches whose predicates fail are automatically skipped via
+     * `RemoveMatch()`.
      *
      * @returns {Object | 0} an object `{match, captureIndex}`, or `0` if exhausted
      */
     NextCapture() {
-        matchBuf := Buffer(16, 0)
-        result := DllCall("tree-sitter\ts_query_cursor_next_capture",
-            "ptr", this,
-            "ptr", matchBuf,
-            "uint*", &captureIndex := 0,
-            "cdecl uchar")
+        loop {
+            matchBuf := Buffer(16, 0)
+            result := DllCall("tree-sitter\ts_query_cursor_next_capture",
+                "ptr", this,
+                "ptr", matchBuf,
+                "uint*", &captureIndex := 0,
+                "cdecl uchar")
 
-        if (!result)
-            return 0
+            if (!result)
+                return 0
 
-        return {match: this._ReadMatch(matchBuf), captureIndex: captureIndex}
+            match := this._ReadMatch(matchBuf)
+
+            if !this._SatisfiesPredicates(match) {
+                this.RemoveMatch(match.id)
+                continue
+            }
+
+            return {match: match, captureIndex: captureIndex}
+        }
     }
 
     /**
@@ -285,6 +317,175 @@ class TSQueryCursor {
     }
 
     /**
+     * Check whether a match satisfies all predicates for its pattern.
+     * Directives (names ending with `!`) are skipped.
+     * Throws if predicates exist but no source buffer is available.
+     */
+    _SatisfiesPredicates(match) {
+        predicates := this._query.GetPredicates(match.patternIndex)
+        if !predicates.Length
+            return true
+
+        for (pred in predicates) {
+            ; Directives (e.g. #set!) don't filter matches
+            if (SubStr(pred.name, -1) == "!")
+                continue
+
+            ; Custom handlers take priority over built-ins
+            if (this._predicateHandlers.Has(pred.name)) {
+                if (!this._predicateHandlers[pred.name](this, match, pred.args)) {
+                    return false
+                }
+                continue
+            }
+
+            ; Throw if predicates need source text but none is available
+            if (!this._tree.HasOwnProp("_source"))
+                throw Error("Query has predicates but no source buffer is available on the tree", -1)
+
+            result := this._EvalBuiltinPredicate(pred.name, match, pred.args)
+            if (result == -1)
+                throw Error("Unknown predicate: #" pred.name, -1)
+            if (!result)
+                return false
+        }
+        return true
+    }
+
+    /**
+     * Dispatch to the appropriate built-in predicate evaluator.
+     * Returns -1 if the predicate name is not recognized.
+     */
+    _EvalBuiltinPredicate(name, match, args) {
+        switch name {
+            case "eq?":              return this._EvalEq(match, args, false, false)
+            case "not-eq?":          return this._EvalEq(match, args, true, false)
+            case "any-eq?":          return this._EvalEq(match, args, false, true)
+            case "any-not-eq?":      return this._EvalEq(match, args, true, true)
+            case "match?":           return this._EvalMatch(match, args, false, false)
+            case "not-match?":       return this._EvalMatch(match, args, true, false)
+            case "any-match?":       return this._EvalMatch(match, args, false, true)
+            case "any-not-match?":   return this._EvalMatch(match, args, true, true)
+            case "any-of?":          return this._EvalAnyOf(match, args, false)
+            case "not-any-of?":      return this._EvalAnyOf(match, args, true)
+            case "is?", "is-not?":   return true  ; no-op by default
+            default:                 return -1
+        }
+    }
+
+    /**
+     * Evaluate `#eq?` / `#not-eq?` / `#any-eq?` / `#any-not-eq?`.
+     *
+     * @param {TSQueryCursor.Match} match the match to evaluate
+     * @param {Array} args predicate arguments (capture + string or capture)
+     * @param {Boolean} negate if true, invert the per-node comparison
+     * @param {Boolean} anyMode if true, pass when ANY node matches (vs ALL)
+     */
+    _EvalEq(match, args, negate, anyMode) {
+        if (args.Length < 2)
+            throw Error("#eq? requires 2 arguments (capture and string or capture)", -1)
+        if (args[1].type !== "capture")
+            throw Error("#eq? first argument must be a capture", -1)
+
+        nodes := this._GetCaptureNodes(match, args[1].value)
+
+        if (args[2].type == "capture") {
+            targetNodes := this._GetCaptureNodes(match, args[2].value)
+            targetText := targetNodes.Length ? targetNodes[1].node.Text : ""
+        } 
+        else {
+            targetText := args[2].value
+        }
+
+        for (capture in nodes) {
+            eq := capture.node.Text == targetText
+            if (negate)
+                eq := !eq
+            if (anyMode && eq)
+                return true
+            if (!anyMode && !eq)
+                return false
+        }
+        return !anyMode
+    }
+
+    /**
+     * Evaluate `#match?` / `#not-match?` / `#any-match?` / `#any-not-match?`.
+     *
+     * @param {TSQueryCursor.Match} match the match to evaluate
+     * @param {Array} args predicate arguments (capture + regex string)
+     * @param {Boolean} negate if true, invert the per-node comparison
+     * @param {Boolean} anyMode if true, pass when ANY node matches (vs ALL)
+     */
+    _EvalMatch(match, args, negate, anyMode) {
+        if (args.Length < 2)
+            throw Error("#match? requires 2 arguments (capture and regex string)", -1)
+        if (args[1].type !== "capture")
+            throw Error("#match? first argument must be a capture", -1)
+
+        nodes := this._GetCaptureNodes(match, args[1].value)
+        pattern := args[2].value
+
+        for (capture in nodes) {
+            matched := !!RegExMatch(capture.node.Text, pattern)
+            if (negate)
+                matched := !matched
+            if (anyMode && matched)
+                return true
+            if (!anyMode && !matched)
+                return false
+        }
+        return !anyMode
+    }
+
+    /**
+     * Evaluate `#any-of?` / `#not-any-of?`.
+     *
+     * @param {TSQueryCursor.Match} match the match to evaluate
+     * @param {Array} args predicate arguments (capture + one or more strings)
+     * @param {Boolean} negate if true, check that text is NOT in the set
+     */
+    _EvalAnyOf(match, args, negate) {
+        if args.Length < 2
+            throw Error("#any-of? requires at least 2 arguments (capture and one or more strings)", -1)
+        if args[1].type !== "capture"
+            throw Error("#any-of? first argument must be a capture", -1)
+
+        nodes := this._GetCaptureNodes(match, args[1].value)
+
+        ; Build set of allowed values from remaining args
+        values := Map()
+        loop (args.Length - 1)
+            values[args[A_Index + 1].value] := true
+
+        for capture in nodes {
+            found := values.Has(capture.node.Text)
+            if (negate)
+                found := !found
+            if (!found)
+                return false
+        }
+        return true
+    }
+
+    /**
+     * Get all captures in a match that have the given capture name.
+     *
+     * @param {TSQueryCursor.Match} match the match
+     * @param {String} captureName the capture name (without `@`)
+     * @returns {Array<TSQueryCursor.Capture>}
+     */
+    _GetCaptureNodes(match, captureName) {
+        result := Array()
+        for (capture in match.captures) {
+            if (this._query.GetCaptureNameForId(capture.index) == captureName) {
+                result.Push(capture)
+            }
+        }
+        return result
+    }
+
+    /**
      * Read a TSQueryMatch from a 16-byte buffer and return a Match object.
      *
      * TSQueryMatch layout (x64, 16 bytes):
@@ -306,7 +507,7 @@ class TSQueryCursor {
 
         captures := Array()
         captures.Length := captureCount
-        loop captureCount {
+        loop (captureCount) {
             captureBase := capturesPtr + 40 * (A_Index - 1)
 
             node := TSNode(this._tree)
@@ -318,7 +519,9 @@ class TSQueryCursor {
             )
         }
 
-        return TSQueryCursor.Match(id, patternIndex, captures)
+        match := TSQueryCursor.Match(id, patternIndex, captures)
+        match.settings := this._query.GetPatternSettings(patternIndex)
+        return match
     }
 
     __Delete() => DllCall("tree-sitter\ts_query_cursor_delete", "ptr", this, "cdecl")

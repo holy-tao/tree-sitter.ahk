@@ -91,6 +91,22 @@ class TSNode extends Buffer {
     }
 
     /**
+     * Get the node's text from the source buffer stored on the tree.
+     *
+     * Requires that the tree was created via `TSParser.Parse()`, which
+     * automatically stores the source buffer.
+     * @type {String}
+     */
+    Text {
+        get {
+            if !this.tree.HasOwnProp("_source")
+                throw Error("Source buffer not available on tree", -1)
+            return StrGet(this.tree._source.Ptr + this.StartByte,
+                this.EndByte - this.StartByte, this.tree._StrGetEncoding)
+        }
+    }
+
+    /**
      * Check if the node is null. Functions like `GetChild` and
      * `NextSibling` will return a null node to indicate that no such node
      * was found.

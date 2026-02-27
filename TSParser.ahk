@@ -66,7 +66,7 @@ class TSParser {
                 "cdecl ptr")
         }
 
-        return TSTree(treePtr, this._tslang)
+        return TSTree(treePtr, this._tslang, code, encoding?)
     }
 
     /**

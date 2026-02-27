@@ -50,10 +50,13 @@ class TSQuery {
             "cdecl ptr")
 
         if(this.ptr == 0) {
-            msg := Format("Query {1} error at offset {2}", 
+            msg := Format("Query {1} error at offset {2}",
                 StrLower(TSQueryError.ToString(errType)), errOffset)
             throw ValueError(msg, -1, expression)
         }
+
+        this._predicateCache := Map()
+        this._settingsCache := Map()
     }
 
     /**
@@ -108,12 +111,11 @@ class TSQuery {
      *    that represent the end of an individual predicate. If a pattern has two
      *    predicates, then there will be two steps with this `type` in the array.
      * 
-     * The AHK bindings do not currently support any predicates (or directives). See
-     * {@link https://tree-sitter.github.io/tree-sitter/using-parsers/queries/3-predicates-and-directives.html Predicates and Directives - Tree-sitter}
-     * for more details.
-     * 
+     * For a higher-level parsed representation, use `GetPredicates()` instead.
+     *
+     * @see https://tree-sitter.github.io/tree-sitter/using-parsers/queries/3-predicates-and-directives.html
      * @param {Integer} patternIndex the index of the pattern to query for
-     * @returns {Array<TSQueryPredicateStep>} the predicates for the given pattern
+     * @returns {Array<TSQuery.PredicateStep>} the raw predicate steps for the given pattern
      */
     GetPatternPredicates(patternIndex := 0) {
         TSNode._AssertInt(patternIndex)
@@ -132,6 +134,91 @@ class TSQuery {
         }
 
         return predicates
+    }
+
+    /**
+     * Get the parsed predicates for the given pattern.
+     *
+     * Returns an array of predicate objects, each with a `name` (the predicate
+     * name without the `#` prefix, e.g. `"eq?"`) and an `args` array. Each arg
+     * is an object with `type` (`"capture"` or `"string"`) and `value`.
+     *
+     * Results are cached per pattern index.
+     *
+     * @param {Integer} patternIndex the index of the pattern
+     * @returns {Array<{name: String, args: Array<{type: String, value: String}>}>}
+     */
+    GetPredicates(patternIndex := 0) {
+        TSNode._AssertInt(patternIndex)
+
+        if (this._predicateCache.Has(patternIndex))
+            return this._predicateCache[patternIndex]
+
+        steps := this.GetPatternPredicates(patternIndex)
+        predicates := Array()
+        current := Array()
+
+        for (step in steps) {
+            if (step.type == TSQueryPredicateStepType.Done) {
+                if (current.Length > 0) {
+                    ; First step must be the predicate name (a string)
+                    nameStep := current[1]
+                    if (nameStep.type !== TSQueryPredicateStepType.String)
+                        throw Error("Predicate must start with a string name", -1)
+
+                    args := Array()
+                    loop (current.Length - 1) {
+                        s := current[A_Index + 1]
+                        args.Push(s.type == TSQueryPredicateStepType.Capture ? 
+                            {type: "capture", value: this.GetCaptureNameForId(s.id)} :
+                            {type: "string", value: this.GetStringValueForId(s.id)}
+                        )
+                    }
+
+                    predicates.Push({name: this.GetStringValueForId(nameStep.id), args: args})
+                }
+                current := Array()
+            } 
+            else {
+                current.Push(step)
+            }
+        }
+
+        this._predicateCache[patternIndex] := predicates
+        return predicates
+    }
+
+    /**
+     * Get the `#set!` directive settings for the given pattern.
+     *
+     * Returns a Map of key/value pairs from all `#set!` directives on the
+     * pattern. A `#set!` with only a key and no value sets the value to `true`.
+     *
+     * Results are cached per pattern index.
+     *
+     * @param {Integer} patternIndex the index of the pattern
+     * @returns {Map<String, String>}
+     */
+    GetPatternSettings(patternIndex := 0) {
+        TSNode._AssertInt(patternIndex)
+
+        if this._settingsCache.Has(patternIndex)
+            return this._settingsCache[patternIndex]
+
+        settings := Map()
+        for (pred in this.GetPredicates(patternIndex)) {
+            if (pred.name == "set!") {
+                if (pred.args.Length >= 2) {
+                    settings[pred.args[1].value] := pred.args[2].value
+                }
+                else if (pred.args.Length == 1) {
+                    settings[pred.args[1].value] := true
+                }
+            }
+        }
+
+        this._settingsCache[patternIndex] := settings
+        return settings
     }
 
     /**
@@ -281,8 +368,8 @@ class TSQuery {
     __Delete() => DllCall("tree-sitter\ts_query_delete", "ptr", this, "cdecl")
 
     /**
-     * Describtes a {@link https://tree-sitter.github.io/tree-sitter/using-parsers/queries/3-predicates-and-directives.html#predicates predicate}
-     * for a query. Not currently supported.
+     * A raw predicate step from the C API. For parsed predicates, use `GetPredicates()`.
+     * @see https://tree-sitter.github.io/tree-sitter/using-parsers/queries/3-predicates-and-directives.html
      */
     class PredicateStep {
         __New(type, id) {
