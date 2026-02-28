@@ -14,6 +14,7 @@
         - [Supported Directives](#supported-directives)
         - [Custom Predicates](#custom-predicates)
     - [Walking the tree](#walking-the-tree)
+      - [Visitors](#visitors)
 - [Aquiring Binaries](#aquiring-binaries)
   - [Building the Runtime](#building-the-runtime)
   - [Grammars](#grammars)
@@ -152,6 +153,26 @@ cursor := TSTreeCursor(tree.Root)
 [`ASTViewer`](./ASTViewer.ahk) demonstrates the use of a tree cursor to perform a full tree-walk as well as ways to extract the underlying code from the tree's nodes.
 
 For simple cases, you can also access a node's parent, siblings, and children via the node itself. If you're going to be walking an entire tree, you should still prefer the cursor method. Read more about nodes in tree-siter's [documentation](https://tree-sitter.github.io/tree-sitter/using-parsers/2-basic-parsing.html#syntax-nodes).
+
+#### Visitors
+
+`tree-sitter.ahk` provides a utility class called [`TSVisitor`](./TSVisitor.ahk) which can be used to do visitor-based tree walks. The class is a subclass of `TSTreeCursor`, and like it, is instantiated at some node on a tree.
+
+You can then regisiter callbacks for entering and exiting a particular node type, which are called before and after the visitor visits nodes of that type. These callbacks take a reference to the visitor itself, and to its current node, which they can use to perform analysis or even their own tree walks.
+
+```autohotkey
+stdout := FileOpen("*", "w")
+
+; Walk the entire tree and print all string literals to stdout
+visitor := TSVisitor(tree.root)
+visitor.OnEnter("string_literal", (visitor, node) => stdout.WriteLine(node.text))
+
+visitor.Visit()
+```
+
+Once you have registered your callbacks, simply call `Visit()`, and the visitor will walk the provided tree and invoke the registered callbacks. Note that you can use the string `"*"` to register a callback for *every* node type.
+
+This pattern is particularly useful for tree walks that need to track scope. By implementing both an enter and an exit callback, you can track 
 
 # Aquiring Binaries
 You need two `.dll` files to work with tree-sitter: the tree-sitter runtime, and the compiled grammar of your choice. The tree-sitter runtime is available pre-built through a couple of package managers, and you could probably extract it from there. But if you don't want to deal with all that, it's pretty easy to compile yourself.
