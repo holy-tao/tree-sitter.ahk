@@ -352,6 +352,24 @@ class TSNode extends Buffer {
     }
 
     /**
+     * Get all children of the node with the given field name.
+     * 
+     * @param {String} name the field name to query
+     * @returns {Array<TSNode>} the found nodes, if any
+     */
+    GetChildrenByFieldName(name) {
+        found := []
+
+        ; NOTE - use child count since fields can refer to unnamed children
+        loop (this.ChildCount) {
+            if (this.GetFieldNameForChild(A_Index - 1))
+                found.Push(this.GetChild(A_Index - 1))
+        }
+
+        return found
+    }
+
+    /**
      * Get the node's child with the given numerical field id.
      *
      * You can convert a field name to an id using `TSLanguage.GetFieldId`
