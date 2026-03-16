@@ -102,6 +102,9 @@ UpdateTree(window, cursor) {
             ; Ignore anonymous nodes
             if(node.IsNamed || node.IsMissing) {
                 treeName := node.Type
+                if(fieldName := cursor.CurrentFieldName) {
+                    treeName := fieldName ": " treeName
+                }
                 if(node.HasError) {
                     treeName := "(!!!) " treeName
                 }
@@ -142,9 +145,6 @@ OnItemSelected(window, treeView, item) {
     node := nodes[item]
 
     window["ExprEdit"].value := node.NodeString
-
-    ; Since we already have the source file loaded in memory, we can extract its text using
-    ; the node's byte offsets
-    window["CodeEdit"].value := StrGet(source.Ptr + node.StartByte, node.EndByte - node.StartByte, "UTF-8")
+    window["CodeEdit"].value := node.Text
 
 }
