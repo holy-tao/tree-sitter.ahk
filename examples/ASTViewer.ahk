@@ -4,10 +4,10 @@
  * NOTE: this expects to have the tree-sitter runtime and the tree-sitter grammar located in a .\bin directory.
  * See https://github.com/holy-tao/tree-sitter-autohotkey for the grammar
  */
-#DllLoad bin\tree-sitter.dll
-#DllLoad bin\tree-sitter-autohotkey.dll
+#DllLoad "../bin/tree-sitter.dll"
+#DllLoad "../bin/tree-sitter-autohotkey.dll"
 
-#Import "tree-sitter" as TreeSitter
+#Import "../__Init.ahk" as TreeSitter
 
 lang := TreeSitter.Language(DllCall("tree-sitter-autohotkey\tree_sitter_autohotkey", IntPtr))
 parser := TreeSitter.Parser(lang)
