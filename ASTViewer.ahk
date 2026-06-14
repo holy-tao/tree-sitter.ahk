@@ -1,4 +1,4 @@
-#Requires AutoHotkey v2.0
+#Requires AutoHotkey v2.1-alpha.30 64-bit
 
 /**
  * NOTE: this expects to have the tree-sitter runtime and the tree-sitter grammar located in a .\bin directory.
@@ -7,16 +7,19 @@
 #DllLoad bin\tree-sitter.dll
 #DllLoad bin\tree-sitter-autohotkey.dll
 
-#Include TSParser.ahk
-#Include TSLanguage.ahk
-#Include TSTreeCursor.ahk
+#Import "tree-sitter" as TreeSitter
 
-lang := TSLanguage(DllCall("tree-sitter-autohotkey\tree_sitter_autohotkey", "cdecl ptr"))
-parser := TSParser(lang)
+lang := TreeSitter.Language(DllCall("tree-sitter-autohotkey\tree_sitter_autohotkey", IntPtr))
+parser := TreeSitter.Parser(lang)
 
 showHidden := false
 nodes := Map()
 source := ""
+
+; Nodes are non-owning views into the parse tree: a Node struct can't keep its
+; tree alive, so the tree must outlive any nodes we stash in `nodes`. Hold it in
+; a global, or the wrapper is collected and the nodes dangle (use-after-free).
+tree := 0
 
 window := CreateMainGui()
 window["Tree"].OnEvent("ItemSelect", OnItemSelected.Bind(window))
@@ -59,7 +62,7 @@ CreateMainGui() {
  * File > Open handler. Prompts for a file, parses it, and refreshes the tree view.
  */
 OpenFile() {
-    global source, nodes
+    global source, nodes, tree
     window.Opt("+OwnDialogs")
 
     filepath := FileSelect("1", A_WorkingDir, "Select a file to view", "AHK Script (*.ahk; *.ah2; *.ahk2)")
@@ -67,8 +70,8 @@ OpenFile() {
         return
 
     source := FileRead(filepath, "RAW")
-    tree := parser.Parse(source, TSInputEncoding.UTF8)
-    cursor := TSTreeCursor(tree.Root)
+    tree := parser.Parse(source, TreeSitter.InputEncoding.UTF8)
+    cursor := TreeSitter.TreeCursor(tree.Root)
 
     window["CodeEdit"].Value := ""
     window["ExprEdit"].Value := ""

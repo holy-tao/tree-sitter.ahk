@@ -1,8 +1,7 @@
-#Requires AutoHotkey v2.0
+#Requires AutoHotkey v2.1-alpha.30 64-bit
 
-#Include TSQuery.ahk
-#Include TSNode.ahk
-#Include TSTree.ahk
+#Import Query
+#Import Node {*}
 
 /**
  * A cursor for executing a tree-sitter query.
@@ -26,7 +25,7 @@
  * You can then start executing another query on another node by calling
  * `Exec` again.
  */
-class TSQueryCursor {
+export default class QueryCursor {
 
     /**
      * An optional maximum capacity for storing lists of in-progress captures.
@@ -51,7 +50,7 @@ class TSQueryCursor {
 
     /**
      * Creates a new tree-sitter cursor
-     * @returns {TSQueryCursor}
+     * @returns {QueryCursor}
      */
     __New() {
         this.ptr := DllCall("tree-sitter\ts_query_cursor_new", "cdecl ptr")
@@ -61,24 +60,24 @@ class TSQueryCursor {
     /**
      * Start running the given query on the given node
      * 
-     * @param {TSQuery} query the query to execute
-     * @param {TSNode} node the node to execute the query on 
+     * @param {Query} queryObj the query to execute
+     * @param {Node} atNode the node to execute the query on
      */
-    Exec(query, node) {
-        if(!(query is TSQuery))
-            throw TypeError("Expected a TSQuery but got a(n) " Type(query), -1, query)
+    Exec(queryObj, atNode) {
+        if(!(queryObj is Query))
+            throw TypeError("Expected a Query but got a(n) " Type(queryObj), -1, queryObj)
 
-        if(!(node is TSNode))
-            throw TypeError("Expected a TSNode but got a(n) " Type(node), -1, node)
+        if(!(atNode is Node))
+            throw TypeError("Expected a Node but got a(n) " Type(atNode), -1, atNode)
 
-        this._query := query
-        this._tree := node.tree
+        this._query := queryObj
+        this._tree := atNode.tree
 
         ; TODO support exec_with_options?
         DllCall("tree-sitter\ts_query_cursor_exec",
             "ptr", this,
-            "ptr", query,
-            "ptr", node,
+            "ptr", queryObj,
+            Node.Ptr, atNode,
             "cdecl")
     }
 
@@ -109,8 +108,8 @@ class TSQueryCursor {
      * @param {Integer} end the ending byte of the range
      */
     SetByteRange(start, end) {
-        TSNode._AssertInt(start)
-        TSNode._AssertInt(end)
+        Node._AssertInt(start)
+        Node._AssertInt(end)
 
         if(start > end)
             throw ValueError("Starting byte must be smaller than ending byte", -1, start " > " end)
@@ -134,17 +133,17 @@ class TSQueryCursor {
      * than the specified range, but part of that node intersects with the range,
      * the entire match will be returned.
      * 
-     * @param {TSPoint} start the starting point of the range
-     * @param {TSPoint} end the ending point of the range
+     * @param {Point} start the starting point of the range
+     * @param {Point} end the ending point of the range
      */
     SetPointRange(start, end) {
-        TSPoint._AssertIs(start)
-        TSPoint._AssertIs(end)
+        Point._AssertIs(start)
+        Point._AssertIs(end)
 
         result := DllCall("tree-sitter\ts_query_cursor_set_point_range",
             "ptr", this,
-            "ptr", start,
-            "ptr", end,
+            Point, start,
+            Point, end,
             "cdecl ushort")
 
         if(!result) {
@@ -166,8 +165,8 @@ class TSQueryCursor {
      * @param {Integer} end the ending byte of the range
      */
     SetContainingByteRange(start, end) {
-        TSNode._AssertInt(start)
-        TSNode._AssertInt(end)
+        Node._AssertInt(start)
+        Node._AssertInt(end)
 
         if(start > end)
             throw ValueError("Starting byte must be smaller than ending byte", -1, start " > " end)
@@ -188,17 +187,17 @@ class TSQueryCursor {
      * can be used together, e.g. to search for any matches that intersect line 5000, as
      * long as they are fully contained within lines 4500-5500
      * 
-     * @param {TSPoint} start the starting point of the range
-     * @param {TSPoint} end the ending point of the range
+     * @param {Point} start the starting point of the range
+     * @param {Point} end the ending point of the range
      */
     SetContainingPointRange(start, end) {
-        TSPoint._AssertIs(start)
-        TSPoint._AssertIs(end)
+        Point._AssertIs(start)
+        Point._AssertIs(end)
 
         result := DllCall("tree-sitter\ts_query_cursor_set_containing_point_range",
             "ptr", this,
-            "ptr", start,
-            "ptr", end,
+            Point, start,
+            Point, end,
             "cdecl ushort")
 
         if(!result) {
@@ -218,7 +217,7 @@ class TSQueryCursor {
      * match's pattern index and an array of captures. If there are no more
      * matches, `0` is returned.
      *
-     * @returns {TSQueryCursor.Match | 0} the next match, or `0` if exhausted
+     * @returns {QueryCursor.Match | 0} the next match, or `0` if exhausted
      */
     NextMatch() {
         loop {
@@ -290,7 +289,7 @@ class TSQueryCursor {
      * @param {Integer} matchId the id of the match to remove
      */
     RemoveMatch(matchId) {
-        TSNode._AssertInt(matchId)
+        Node._AssertInt(matchId)
 
         DllCall("tree-sitter\ts_query_cursor_remove_match",
             "ptr", this,
@@ -308,7 +307,7 @@ class TSQueryCursor {
      * @param {Integer} depth the maximum start depth (use `0xFFFFFFFF` for no limit)
      */
     SetMaxStartDepth(depth) {
-        TSNode._AssertInt(depth)
+        Node._AssertInt(depth)
 
         DllCall("tree-sitter\ts_query_cursor_set_max_start_depth",
             "ptr", this,
@@ -376,7 +375,7 @@ class TSQueryCursor {
     /**
      * Evaluate `#eq?` / `#not-eq?` / `#any-eq?` / `#any-not-eq?`.
      *
-     * @param {TSQueryCursor.Match} match the match to evaluate
+     * @param {QueryCursor.Match} match the match to evaluate
      * @param {Array} args predicate arguments (capture + string or capture)
      * @param {Boolean} negate if true, invert the per-node comparison
      * @param {Boolean} anyMode if true, pass when ANY node matches (vs ALL)
@@ -412,7 +411,7 @@ class TSQueryCursor {
     /**
      * Evaluate `#match?` / `#not-match?` / `#any-match?` / `#any-not-match?`.
      *
-     * @param {TSQueryCursor.Match} match the match to evaluate
+     * @param {QueryCursor.Match} match the match to evaluate
      * @param {Array} args predicate arguments (capture + regex string)
      * @param {Boolean} negate if true, invert the per-node comparison
      * @param {Boolean} anyMode if true, pass when ANY node matches (vs ALL)
@@ -441,7 +440,7 @@ class TSQueryCursor {
     /**
      * Evaluate `#any-of?` / `#not-any-of?`.
      *
-     * @param {TSQueryCursor.Match} match the match to evaluate
+     * @param {QueryCursor.Match} match the match to evaluate
      * @param {Array} args predicate arguments (capture + one or more strings)
      * @param {Boolean} negate if true, check that text is NOT in the set
      */
@@ -471,9 +470,9 @@ class TSQueryCursor {
     /**
      * Get all captures in a match that have the given capture name.
      *
-     * @param {TSQueryCursor.Match} match the match
+     * @param {QueryCursor.Match} match the match
      * @param {String} captureName the capture name (without `@`)
-     * @returns {Array<TSQueryCursor.Capture>}
+     * @returns {Array<QueryCursor.Capture>}
      */
     _GetCaptureNodes(match, captureName) {
         result := Array()
@@ -486,16 +485,16 @@ class TSQueryCursor {
     }
 
     /**
-     * Read a TSQueryMatch from a 16-byte buffer and return a Match object.
+     * Read a QueryMatch from a 16-byte buffer and return a Match object.
      *
-     * TSQueryMatch layout (x64, 16 bytes):
+     * QueryMatch layout (x64, 16 bytes):
      *   offset 0:  uint32_t id
      *   offset 4:  uint16_t pattern_index
      *   offset 6:  uint16_t capture_count
-     *   offset 8:  const TSQueryCapture *captures
+     *   offset 8:  const QueryCapture *captures
      *
-     * TSQueryCapture layout (x64, 40 bytes with padding):
-     *   offset 0:  TSNode node (32 bytes)
+     * QueryCapture layout (x64, 40 bytes with padding):
+     *   offset 0:  Node node (32 bytes)
      *   offset 32: uint32_t index (4 bytes)
      *   +4 bytes padding for 8-byte alignment
      */
@@ -510,16 +509,16 @@ class TSQueryCursor {
         loop (captureCount) {
             captureBase := capturesPtr + 40 * (A_Index - 1)
 
-            node := TSNode(this._tree)
-            DllCall("ntdll\RtlCopyMemory", "ptr", node, "ptr", captureBase, "uint", 32)
+            capNode := Node()
+            DllCall("ntdll\RtlCopyMemory", Node.Ptr, capNode, "ptr", captureBase, "uint", 32)
 
-            captures[A_Index] := TSQueryCursor.Capture(
-                node,
+            captures[A_Index] := QueryCursor.Capture(
+                capNode,
                 NumGet(captureBase, 32, "uint")
             )
         }
 
-        match := TSQueryCursor.Match(id, patternIndex, captures)
+        match := QueryCursor.Match(id, patternIndex, captures)
         match.settings := this._query.GetPatternSettings(patternIndex)
         return match
     }
@@ -536,7 +535,7 @@ class TSQueryCursor {
         /**
          * @param {Integer} id the match id
          * @param {Integer} patternIndex the index of the pattern that produced this match
-         * @param {Array<TSQueryCursor.Capture>} captures the captured nodes
+         * @param {Array<QueryCursor.Capture>} captures the captured nodes
          */
         __New(id, patternIndex, captures) {
             this.id := id
@@ -554,7 +553,7 @@ class TSQueryCursor {
      */
     class Capture {
         /**
-         * @param {TSNode} node the captured node
+         * @param {Node} node the captured node
          * @param {Integer} index the capture index in the query
          */
         __New(node, index) {

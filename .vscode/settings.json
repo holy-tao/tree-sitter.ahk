@@ -1,3 +1,4 @@
 {
-    "markdown.extension.toc.levels": "1..6"
+    "markdown.extension.toc.levels": "1..6",
+    "AutoHotkey2.InterpreterPath": "C:\\Program Files\\Autohotkey\\v2.1\\AutoHotkey.exe",
 }

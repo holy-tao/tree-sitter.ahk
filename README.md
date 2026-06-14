@@ -1,9 +1,10 @@
 # tree-sitter.ahk
 [Tree sitter](https://tree-sitter.github.io/tree-sitter/) bindings for 64-bit AutoHotkey v2
 
-# Table of Contents
+<details>
+<summary>Table of Contents</summary>
+
 - [tree-sitter.ahk](#tree-sitterahk)
-- [Table of Contents](#table-of-contents)
 - [Reqirements](#reqirements)
 - [Usage](#usage)
   - [Instantiating a Parser](#instantiating-a-parser)
@@ -19,6 +20,7 @@
   - [Building the Runtime](#building-the-runtime)
   - [Grammars](#grammars)
 
+</details>
 
 # Reqirements
 
@@ -41,15 +43,15 @@ To load your language, you'll need to load the dll and call it's `tree_sitter_<l
 
 ```autohotkey
 langPtr := DllCall("tree-sitter-autohotkey\tree_sitter_autohotkey", "cdecl ptr")
-ahkLang := TSLanguage(langPtr)
+ahkLang := Language(langPtr)
 
-parser := TSParser(ahkLang)
+parser := Parser(ahkLang)
 ```
 
 Another option is to subclass `TSLanguage` and override it's `__New` method with one that loads your language and passes it to the superclass:
 
 ```autohotkey
-class AutoHotkeyLang extends TSLanguage {
+struct AutoHotkeyLang extends Language {
     __New() {
         ptr := DllCall("tree-sitter-autohotkey\tree_sitter_autohotkey", "cdecl ptr")
         super.__New(ptr)

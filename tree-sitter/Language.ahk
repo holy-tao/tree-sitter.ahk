@@ -1,34 +1,47 @@
-#Requires AutoHotkey v2.0 64-bit
-
-#Include TSEnums.ahk
+#Requires AutoHotkey v2.1-alpha.30 64-bit
 
 /**
- * A tree-sitter language module
+ * A tree-sitter language.
+ *
+ * Mirrors the C `const TSLanguage *`: an opaque pointer. Modeled as a struct
+ * wrapping a single pointer, so it is passed to DllCall *by value* (the class
+ * itself as the arg type) which sends the pointer the C API expects. Passing it
+ * via `Language.Ptr` would send the address of the wrapper (a `TSLanguage**`).
  */
-class TSLanguage {
+export default struct Language {
+
+    value: IntPtr
+
+    /**
+     * Used by DllCall when a non-instance value is passed where a Language is
+     * expected: a new instance is constructed and the raw pointer stored here.
+     */
+    __value {
+        set => this.value := value
+    }
 
     /**
      * The name of this language. This is `NULL` in older parsers.
      * @type {String}
      */
-    Name => DllCall("tree-sitter\ts_language_name", "ptr", this, "cdecl astr")
-    
+    Name => DllCall("tree-sitter\ts_language_name", Language, this, "astr")
+
     /**
      * The number of valid states in this language.
      * @type {Integer}
     */
-    StateCount => DllCall("tree-sitter\ts_language_state_count", "ptr", this, "cdecl uint")
+    StateCount => DllCall("tree-sitter\ts_language_state_count", Language, this, UInt32)
 
     /**
      * The number of distinct node types in the language. Note that this does not include the ERROR nodes.
      * @type {Integer}
      */
-    SymbolCount => DllCall("tree-sitter\ts_language_symbol_count", "ptr", this, "cdecl uint")
+    SymbolCount => DllCall("tree-sitter\ts_language_symbol_count", Language, this, UInt32)
 
     /**
      * The number of distinct field names in the language.
      */
-    FieldCount => DllCall("tree-sitter\ts_language_field_count", "ptr", this, "cdecl uint")
+    FieldCount => DllCall("tree-sitter\ts_language_field_count", Language, this, UInt32)
 
     /**
      * The ABI version number for this language. This version number is used
@@ -36,32 +49,33 @@ class TSLanguage {
      * Tree-sitter.
      * @type {Integer}
      */
-    AbiVersion => DllCall("tree-sitter\ts_language_abi_version", "ptr", this, "cdecl uint")
+    AbiVersion => DllCall("tree-sitter\ts_language_abi_version", Language, this, UInt32)
 
     /**
      * The language version as a SemVer string
      */
     LanguageVersion {
         get {
-            metadata := DllCall("tree-sitter\ts_language_metadata", "ptr", this, "cdecl ptr")
-            return Format("{1}.{2}.{3}", 
-                NumGet(metadata, 0, "uchar"), 
-                NumGet(metadata, 1, "uchar"), 
+            metadata := DllCall("tree-sitter\ts_language_metadata", Language, this, IntPtr)
+            return Format("{1}.{2}.{3}",
+                NumGet(metadata, 0, "uchar"),
+                NumGet(metadata, 1, "uchar"),
                 NumGet(metadata, 2, "uchar"))
         }
     }
 
     /**
-     * Creates a new TSLanguage
-     * @param {Integer} ptr the pointer obtained by calling your language-specific dll's initializer 
+     * Creates a new Language
+     * @param {Integer} ptr the pointer obtained by calling your language-specific dll's initializer
      */
-    __New(ptr) {
-        this.ptr := ptr
+    __New(ptr?) {
+        if IsSet(ptr)
+            this.value := ptr
     }
 
     /**
      * Get the field name string for the given numerical id.
-     * 
+     *
      * @param {Integer} field the field Id
      * @returns {String} the name of the field
      */
@@ -69,15 +83,15 @@ class TSLanguage {
         if(!IsInteger(field))
             throw TypeError("Expected an Integer but got a(n) " Type(field), -1, field)
 
-        return DllCall("tree-sitter\ts_language_field_name_for_id", 
-            "ptr", this, 
+        return DllCall("tree-sitter\ts_language_field_name_for_id",
+            Language, this,
             "ushort", Integer(field),
             "cdecl astr")
     }
 
     /**
      * Get the numerical id for the given field name string.
-     * 
+     *
      * @param {String} fieldName the name of the field
      * @returns {Integer} the field's numerical id
      */
@@ -85,8 +99,8 @@ class TSLanguage {
         if(!(fieldName is String))
             throw TypeError("Expected a String but got a(n) " Type(fieldName), -1, fieldName)
 
-        return DllCall("tree-sitter\ts_language_symbol_type", 
-            "ptr", this, 
+        return DllCall("tree-sitter\ts_language_symbol_type",
+            Language, this,
             "astr", fieldName,
             "uint", StrLen(fieldName),
             "cdecl ushort")
@@ -94,11 +108,11 @@ class TSLanguage {
 
     /**
      * Get a list of all supertype symbols for the language
-     * 
+     *
      * @returns {Array<Integer>} a list of all supertype symbols
     */
     GetSupertypes() {
-        arrPtr := DllCall("tree-sitter\ts_language_supertypes", "ptr", this, "uint*", &len := 0, "cdecl ptr")
+        arrPtr := DllCall("tree-sitter\ts_language_supertypes", Language, this, "uint*", &len := 0, "cdecl ptr")
 
         arr := Array(), arr.Length := len
         Loop(len) {
@@ -112,7 +126,7 @@ class TSLanguage {
      * Get a list of all subtype symbol ids for a given supertype symbol.
      *
      * See `GetSupertypes` for fetching all supertype symbols.
-     * 
+     *
      * @param {Integer} symbol the symbol to check
      * @returns {Array<Integer>} a list of all symbols which are a subtype of the input
      */
@@ -120,10 +134,10 @@ class TSLanguage {
         if(!IsInteger(symbol))
             throw TypeError("Expected an Integer but got a(n) " Type(symbol), -1, symbol)
 
-        arrPtr := DllCall("tree-sitter\ts_language_subtypes", 
-            "ptr", this,
+        arrPtr := DllCall("tree-sitter\ts_language_subtypes",
+            Language, this,
             "ushort", Integer(symbol),
-            "uint*", &len := 0, 
+            "uint*", &len := 0,
             "cdecl ptr")
 
         arr := Array(), arr.Length := len
@@ -136,17 +150,17 @@ class TSLanguage {
 
     /**
      * Get a node type string for the given numerical id.
-     * 
-     * @param {Integer} symbol the numeric id of the symbol 
+     *
+     * @param {Integer} symbol the numeric id of the symbol
      * @returns {String} the name of the symbol
      */
     GetSymbolName(symbol) {
         if(!IsInteger(symbol))
             throw TypeError("Expected an Integer but got a(n) " Type(symbol), -1, symbol)
 
-        return DllCall("tree-sitter\ts_language_symbol_name", 
-            "ptr", this, 
-            "ushort", Integer(symbol), 
+        return DllCall("tree-sitter\ts_language_symbol_name",
+            Language, this,
+            "ushort", Integer(symbol),
             "cdecl astr")
     }
 
@@ -155,22 +169,22 @@ class TSLanguage {
      * or a hidden nodes.
      *
      * See also `IsSymbolNamed`. Hidden nodes are never returned from the API.
-     * @param {Integer} symbol the numeric id of the symbol 
-     * @returns {TSSymbolType} the symbol type
+     * @param {Integer} symbol the numeric id of the symbol
+     * @returns {SymbolType} the symbol type
      */
     GetSymbolType(symbol) {
         if(!IsInteger(symbol))
             throw TypeError("Expected an Integer but got a(n) " Type(symbol), -1, symbol)
 
-        return DllCall("tree-sitter\ts_language_symbol_type", 
-            "ptr", this, 
-            "ushort", Integer(symbol), 
+        return DllCall("tree-sitter\ts_language_symbol_type",
+            Language, this,
+            "ushort", Integer(symbol),
             "cdecl uint")
     }
 
     /**
      * Get the numerical id for the given node type string.
-     * 
+     *
      * @param {String} symbolName the name of the symbol
      * @returns {Integer} the numerical id of the symbol, or 0 if it is not named
      */
@@ -179,7 +193,7 @@ class TSLanguage {
             throw TypeError("Expected a String but got a(n) " Type(symbolName), -1, symbolName)
 
         return DllCall("tree-sitter\ts_language_symbol_for_name",
-            "ptr", this,
+            Language, this,
             "astr", symbolName,
             "uint", StrLen(symbolName),
             "uchar", 1,
@@ -188,10 +202,10 @@ class TSLanguage {
 
     /**
      * Get the next parse state. Combine this with lookahead iterators to generate
-     * completion suggestions or valid symbols in error nodes. Use `TSNode.GrammarSymbol` 
+     * completion suggestions or valid symbols in error nodes. Use `Node.GrammarSymbol`
      * for valid symbols.
      * ts_language_next_state(const TSLanguage *self, TSStateId state, TSSymbol symbol);
-     * 
+     *
      * @param {Integer} stateId the current state
      * @param {Integer} symbol the current symbol
      * @returns {Integer} the next parse state
@@ -204,7 +218,7 @@ class TSLanguage {
             throw TypeError("Expected an Integer but got a(n) " Type(symbol), -1, symbol)
 
         return DllCall("tree-sitter\ts_language_next_state",
-            "ptr", this,
+            Language, this,
             "uchar", Integer(stateId),
             "uchar", Integer(symbol),
             "cdecl uchar")
@@ -213,15 +227,15 @@ class TSLanguage {
     /**
      * Returns a Lookahead iterator which can be used to enumerate the possible states following
      * some other state
-     * 
+     *
      *      for(symbol, name in lang.Lookahead(currentState)) { ... }
-     * 
-     * @param {Integer} state the state to look ahead from 
+     *
+     * @param {Integer} state the state to look ahead from
      */
-    Lookahead(state) => TSLanguage.LookaheadIterator(this.ptr, state)
+    Lookahead(state) => Language.LookaheadIterator(this, state)
 
     __Delete() {
-        DllCall("tree-sitter\ts_language_delete", "ptr", this, "cdecl")
+        DllCall("tree-sitter\ts_language_delete", Language, this, "cdecl")
     }
 
     /**
@@ -229,17 +243,17 @@ class TSLanguage {
      */
     class LookaheadIterator {
 
-        CurrentSymbol => DllCall("tree-sitter\ts_lookahead_iterator_current_symbol", 
-            "ptr", this, 
+        CurrentSymbol => DllCall("tree-sitter\ts_lookahead_iterator_current_symbol",
+            "ptr", this,
             "cdecl uchar")
 
-        CurrentSymbolName => DllCall("tree-sitter\ts_lookahead_iterator_current_symbol_name", 
-            "ptr", this, 
+        CurrentSymbolName => DllCall("tree-sitter\ts_lookahead_iterator_current_symbol_name",
+            "ptr", this,
             "cdecl astr")
 
         __New(lang, state) {
             this.ptr := DllCall("tree-sitter\ts_lookahead_iterator_new",
-                "ptr", lang,
+                Language, lang,
                 "uchar", state,
                 "cdecl ptr")
         }

@@ -1,6 +1,6 @@
-#Requires AutoHotkey v2.0
+#Requires AutoHotkey v2.1-alpha.30
 
-class _TSEnum {
+class _Enum {
     static ToString(value) {
         for(key, enumValue in this.OwnProps()){
             if(enumValue == value)
@@ -11,21 +11,21 @@ class _TSEnum {
     }
 }
 
-class TSInputEncoding extends _TSEnum {
+export class InputEncoding extends _Enum {
     static UTF8     => 0
     static UTF16LE  => 1
     static UTF16BE  => 2
     static Custom   => 3
 }
 
-class TSSymbolType extends _TSEnum {
+export class SymbolType extends _Enum {
     static Regular   => 0
     static Anonymous => 1
     static Supertype => 2
     static Auxiliary => 3
 }
 
-class TSQuantifier extends _TSEnum {
+export class Quantifier extends _Enum {
     static Zero       => 0
     static ZeroOrOne  => 1
     static ZeroOrMore => 2
@@ -33,13 +33,13 @@ class TSQuantifier extends _TSEnum {
     static OneOrMore  => 4
 }
 
-class TSQueryPredicateStepType extends _TSEnum {
+export class QueryPredicateStepType extends _Enum {
     static Done       => 0
     static Capture    => 1
     static String     => 2
 }
 
-class TSQueryError extends _TSEnum {
+export class QueryError extends _Enum {
     static None       => 0
     static Syntax     => 1
     static NodeType   => 2

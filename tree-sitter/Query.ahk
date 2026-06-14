@@ -1,15 +1,15 @@
-#Requires AutoHotkey v2.0 64-bit
+#Requires AutoHotkey v2.1-alpha.30 64-bit
 
-#Include TSLanguage.ahk
-#Include TSEnums.ahk
-#Include TSNode.ahk
+#Import Language
+#Import Node
+#Import Enums { QueryError, QueryPredicateStepType }
 
 /**
  * A set of patterns that match nodes in a syntax tree.
- * 
+ *
  * @see https://tree-sitter.github.io/tree-sitter/using-parsers/queries/index.html
  */
-class TSQuery {
+export default class Query {
 
     /**
      * Get the number of patterns in the query.
@@ -31,18 +31,18 @@ class TSQuery {
      * patterns. The query is associated with a particular language, and can
      * only be run on syntax nodes parsed with that language.
      * 
-     * @param {TSLanguage} language the language
+     * @param {Language} language the language
      * @param {String} expression the s-expression(s) of the query
      */
-    __New(language, expression) {
-        if(!(language is TSLanguage))
-            throw TypeError("Expected a TSLanguage but got a(n) " Type(language), -1, language)
+    __New(lang, expression) {
+        if(!(lang is Language))
+            throw TypeError("Expected a Language but got a(n) " Type(lang), -1, lang)
 
         if(!(expression is String))
             throw TypeError("Expected a String but got a(n) " Type(expression), -1, expression)
 
-        this.ptr := DllCall("tree-sitter\ts_query_new", 
-            "ptr", language,
+        this.ptr := DllCall("tree-sitter\ts_query_new",
+            Language, lang,
             "astr", expression,
             "uint", StrLen(expression),
             "uint*", &errOffset := 0,
@@ -51,7 +51,7 @@ class TSQuery {
 
         if(this.ptr == 0) {
             msg := Format("Query {1} error at offset {2}",
-                StrLower(TSQueryError.ToString(errType)), errOffset)
+                StrLower(QueryError.ToString(errType)), errOffset)
             throw ValueError(msg, -1, expression)
         }
 
@@ -69,7 +69,7 @@ class TSQuery {
      * @returns {Integer} the byte offset where the pattern starts in the query's source
      */
     GetPatternStart(patternIndex := 0) {
-        TSNode._AssertInt(patternIndex)
+        Node._AssertInt(patternIndex)
 
         return DllCall("tree-sitter\ts_query_start_byte_for_pattern",
             "ptr", this,
@@ -87,7 +87,7 @@ class TSQuery {
      * @returns {Integer} the byte offset where the pattern starts in the query's source
      */
     GetPatternEnd(patternIndex := 0) {
-        TSNode._AssertInt(patternIndex)
+        Node._AssertInt(patternIndex)
 
         return DllCall("tree-sitter\ts_query_end_byte_for_pattern",
             "ptr", this,
@@ -101,13 +101,13 @@ class TSQuery {
      * The predicates are represented as a single array of steps. There are three
      * types of steps in this array, which correspond to the three legal values for
      * the `type` field:
-     * - `TSQueryPredicateStepTypeCapture` - Steps with this type represent names
+     * - `QueryPredicateStepTypeCapture` - Steps with this type represent names
      *    of captures. Their `value_id` can be used with the
      *    `GetCaptureNameForId` function to obtain the name of the capture.
-     * - `TSQueryPredicateStepTypeString` - Steps with this type represent literal
+     * - `QueryPredicateStepTypeString` - Steps with this type represent literal
      *    strings. Their `value_id` can be used with the
      *    `GetStringValueForId` function to obtain their string value.
-     * - `TSQueryPredicateStepTypeDone` - Steps with this type are *sentinels*
+     * - `QueryPredicateStepTypeDone` - Steps with this type are *sentinels*
      *    that represent the end of an individual predicate. If a pattern has two
      *    predicates, then there will be two steps with this `type` in the array.
      * 
@@ -115,10 +115,10 @@ class TSQuery {
      *
      * @see https://tree-sitter.github.io/tree-sitter/using-parsers/queries/3-predicates-and-directives.html
      * @param {Integer} patternIndex the index of the pattern to query for
-     * @returns {Array<TSQuery.PredicateStep>} the raw predicate steps for the given pattern
+     * @returns {Array<Query.PredicateStep>} the raw predicate steps for the given pattern
      */
     GetPatternPredicates(patternIndex := 0) {
-        TSNode._AssertInt(patternIndex)
+        Node._AssertInt(patternIndex)
 
         arrPtr := DllCall("tree-sitter\ts_query_predicates_for_pattern",
             "ptr", this,
@@ -126,11 +126,11 @@ class TSQuery {
             "uint*", &arrLen := 0,
             "cdecl ptr")
 
-        ; Like TSPoint, TSQueryPredicateStep is an 8-byte struct that should get passed via rax on x64
+        ; Like Point, QueryPredicateStep is an 8-byte struct that should get passed via rax on x64
         predicates := Array(), predicates.Length := arrLen
         loop(arrLen) {
             v := NumGet(arrPtr, 8 * (A_Index - 1), "uint64")
-            predicates[A_Index] := TSQuery.PredicateStep(v & 0xFFFFFFFF, (v >> 32) & 0xFFFFFFFF)
+            predicates[A_Index] := Query.PredicateStep(v & 0xFFFFFFFF, (v >> 32) & 0xFFFFFFFF)
         }
 
         return predicates
@@ -149,7 +149,7 @@ class TSQuery {
      * @returns {Array<{name: String, args: Array<{type: String, value: String}>}>}
      */
     GetPredicates(patternIndex := 0) {
-        TSNode._AssertInt(patternIndex)
+        Node._AssertInt(patternIndex)
 
         if (this._predicateCache.Has(patternIndex))
             return this._predicateCache[patternIndex]
@@ -159,17 +159,17 @@ class TSQuery {
         current := Array()
 
         for (step in steps) {
-            if (step.type == TSQueryPredicateStepType.Done) {
+            if (step.type == QueryPredicateStepType.Done) {
                 if (current.Length > 0) {
                     ; First step must be the predicate name (a string)
                     nameStep := current[1]
-                    if (nameStep.type !== TSQueryPredicateStepType.String)
+                    if (nameStep.type !== QueryPredicateStepType.String)
                         throw Error("Predicate must start with a string name", -1)
 
                     args := Array()
                     loop (current.Length - 1) {
                         s := current[A_Index + 1]
-                        args.Push(s.type == TSQueryPredicateStepType.Capture ? 
+                        args.Push(s.type == QueryPredicateStepType.Capture ? 
                             {type: "capture", value: this.GetCaptureNameForId(s.id)} :
                             {type: "string", value: this.GetStringValueForId(s.id)}
                         )
@@ -200,7 +200,7 @@ class TSQuery {
      * @returns {Map<String, String>}
      */
     GetPatternSettings(patternIndex := 0) {
-        TSNode._AssertInt(patternIndex)
+        Node._AssertInt(patternIndex)
 
         if this._settingsCache.Has(patternIndex)
             return this._settingsCache[patternIndex]
@@ -228,7 +228,7 @@ class TSQuery {
      * @returns {Boolean} true if the pattern is rooted, false otherwise
      */
     IsPatternRooted(patternIndex := 0) {
-        TSNode._AssertInt(patternIndex)
+        Node._AssertInt(patternIndex)
 
         return DllCall("tree-sitter\ts_query_is_pattern_rooted", 
             "ptr", this, 
@@ -248,7 +248,7 @@ class TSQuery {
      * @returns {Boolean} true if the pattern is non-local, false otherwise
      */
     IsPatternNonLocal(patternIndex := 0) {
-        TSNode._AssertInt(patternIndex)
+        Node._AssertInt(patternIndex)
 
         return DllCall("tree-sitter\ts_query_is_pattern_non_local", 
             "ptr", this, 
@@ -265,7 +265,7 @@ class TSQuery {
      * @returns {Boolean} true of the pattern is guaranteed at a step, false otherwise
      */
     IsPatternGuaranteedAtStep(byteOffset) {
-        TSNode._AssertInt(byteOffset)
+        Node._AssertInt(byteOffset)
 
         return DllCall("tree-sitter\ts_query_is_pattern_guaranteed_at_step", 
             "ptr", this, 
@@ -281,7 +281,7 @@ class TSQuery {
      * @returns {String} the name of the capture
      */
     GetCaptureNameForId(index) {
-        TSNode._AssertInt(index)
+        Node._AssertInt(index)
 
         ptr := DllCall("tree-sitter\ts_query_capture_name_for_id",
             "ptr", this,
@@ -301,8 +301,8 @@ class TSQuery {
      * @returns {Integer} the quantifier value
      */
     GetCaptureQuantifierForId(patternIndex, captureIndex) {
-        TSNode._AssertInt(patternIndex)
-        TSNode._AssertInt(captureIndex)
+        Node._AssertInt(patternIndex)
+        Node._AssertInt(captureIndex)
 
         return DllCall("tree-sitter\ts_query_capture_quantifier_for_id",
             "ptr", this,
@@ -320,7 +320,7 @@ class TSQuery {
      * @returns {String} the string value
      */
     GetStringValueForId(index) {
-        TSNode._AssertInt(index)
+        Node._AssertInt(index)
 
         ptr := DllCall("tree-sitter\ts_query_string_value_for_id",
             "ptr", this,
@@ -357,7 +357,7 @@ class TSQuery {
      * @param {Integer} patternIndex the index of the pattern to disable
      */
     DisablePattern(patternIndex) {
-        TSNode._AssertInt(patternIndex)
+        Node._AssertInt(patternIndex)
 
         DllCall("tree-sitter\ts_query_disable_pattern",
             "ptr", this,

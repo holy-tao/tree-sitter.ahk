@@ -1,14 +1,14 @@
-#Requires AutoHotkey v2.0.0 64-bit
+#Requires AutoHotkey v2.1-alpha.30 64-bit
 
-#Include TSEnums.ahk
-#Include TSTree.ahk
+#Import Tree
+#Import Language
 
 ; https://github.com/tree-sitter/tree-sitter/blob/master/lib/include/tree_sitter/api.h
 
 /**
  * A tree-sitter parser
  */
-class TSParser {
+export default class Parser {
 
     /**
      * An opaque language pointer
@@ -24,7 +24,7 @@ class TSParser {
         this._tslang := tslang
 
         this.ptr := DllCall("tree-sitter.dll\ts_parser_new", "cdecl ptr")
-        DllCall("tree-sitter.dll\ts_parser_set_language", "ptr", this, "ptr", this._tslang, "cdecl int")
+        DllCall("tree-sitter.dll\ts_parser_set_language", "ptr", this, Language, this._tslang, "cdecl int")
     }
 
     /**
@@ -37,8 +37,8 @@ class TSParser {
      * the file into memory instead of reading it directly.
      * 
      * @param {Buffer} code the code to parse
-     * @param {TSInputEncoding} encoding the string encoding, if not default
-     * @returns {TSTree} the parse tree
+     * @param {InputEncoding} encoding the string encoding, if not default
+     * @returns {Tree} the parse tree
      */
     Parse(code, encoding?) {
         if(!(code is Buffer) && !(code.HasProp("ptr") && code.HasProp("size")))
@@ -66,7 +66,7 @@ class TSParser {
                 "cdecl ptr")
         }
 
-        return TSTree(treePtr, this._tslang, code, encoding?)
+        return Tree(treePtr, this._tslang, code, encoding?)
     }
 
     /**
