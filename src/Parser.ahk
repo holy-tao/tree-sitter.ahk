@@ -83,6 +83,7 @@ export default class Parser {
     }
 
     __Delete() {
-        DllCall("tree-sitter.dll\ts_parser_delete", "ptr", this, "cdecl")
+        if this.HasProp("ptr") && this.ptr != 0
+            DllCall("tree-sitter.dll\ts_parser_delete", "ptr", this, "cdecl")
     }
 }
