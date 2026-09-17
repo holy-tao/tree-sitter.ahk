@@ -270,6 +270,18 @@ export default struct Node {
     }
 
     /**
+     * Get all of the node's children.
+     * @returns {Array<Node>}
+     */
+    GetChildren() {
+        children := [], children.Length := this.ChildCount
+        loop this.ChildCount {
+            children[A_Index] := this.GetChild(A_Index - 1)
+        }
+        return children
+    }
+
+    /**
      * Get the node's *named* child at the given index.
      *
      * See also [`ts_node_is_named`].
@@ -287,6 +299,19 @@ export default struct Node {
             UInt32, index,
             "cdecl")
         return result
+    }
+
+    /**
+     * Get all of the node's named children.
+     * @returns {Array<Node>} 
+     */
+    GetNamedChildren(name?) {
+        named := [], named.Length := this.NamedChildCount
+        loop this.NamedChildCount {
+            named[A_Index] := this.GetNamedChild(A_Index - 1)
+        }
+
+        return named
     }
 
     /**
@@ -358,9 +383,8 @@ export default struct Node {
     GetChildrenByFieldName(name) {
         found := []
 
-        ; NOTE - use child count since fields can refer to unnamed children
         loop (this.ChildCount) {
-            if (this.GetFieldNameForChild(A_Index - 1))
+            if (this.GetFieldNameForChild(A_Index - 1) == name)
                 found.Push(this.GetChild(A_Index - 1))
         }
 
