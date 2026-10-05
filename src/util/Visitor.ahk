@@ -88,17 +88,13 @@ export default class Visitor {
      * @param {Node} node node to invoke callbacks with
      */
     _InvokeCallbacks(callbackMap, node) {
-        if(callbackMap.Has(node.Type)) {
-            for(callback in callbackMap[node.Type]) {
-                callback.Call(this, node)
-            }
+        for callback in callbackMap.Get(node.type, []) {
+            callback.Call(this, node)
         }
 
         ; Special-case: * listens for everything
-        if(callbackMap.Has("*")) {
-            for(callback in callbackMap["*"]) {
-                callback.Call(this, node)
-            }
+        for(callback in callbackMap.Get("*", [])) {
+            callback.Call(this, node)
         }
     }
 
@@ -110,6 +106,7 @@ export default class Visitor {
      * @param {Integer} addRemove Whether to append, prepend, or remove the callback
      */
     _AddCallback(callbackMap, nodeType, callback, addRemove) {
+        ;@ahk2exe-ignorebegin
         if(!(nodeType is String))
             throw TypeError("Expected a String but got a(n) " Type(nodeType), , nodeType)
 
@@ -121,6 +118,7 @@ export default class Visitor {
             lang := this._language
             throw ValueError(StrTitle(lang.Name) " v" lang.LanguageVersion " has no such symbol", , '"' nodeType '"')
         }
+        ;@ahk2exe-ignoreend
 
         if(!callbackMap.Has(nodeType))
             callbackMap[nodeType] := []
