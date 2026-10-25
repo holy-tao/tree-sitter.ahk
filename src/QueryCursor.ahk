@@ -2,6 +2,7 @@
 
 #Import Query
 #Import Node {*}
+#Import Tree
 
 /**
  * A cursor for executing a tree-sitter query.
@@ -71,7 +72,6 @@ export default class QueryCursor {
             throw TypeError("Expected a Node but got a(n) " Type(atNode), -1, atNode)
 
         this._query := queryObj
-        this._tree := atNode.tree
 
         ; TODO support exec_with_options?
         DllCall("tree-sitter\ts_query_cursor_exec",
@@ -337,10 +337,6 @@ export default class QueryCursor {
                 }
                 continue
             }
-
-            ; Throw if predicates need source text but none is available
-            if (!this._tree.HasOwnProp("_source"))
-                throw Error("Query has predicates but no source buffer is available on the tree", -1)
 
             result := this._EvalBuiltinPredicate(pred.name, match, pred.args)
             if (result == -1)
